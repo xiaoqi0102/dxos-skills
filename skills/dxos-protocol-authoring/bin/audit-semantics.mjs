@@ -22,14 +22,60 @@
  *
  * 用法：
  *   node audit-semantics.mjs [协议根目录]
- *   # 默认 C:/Users/<用户名>/Desktop/新api接口-dxos，也可用环境变量 PROTO_BASE
+ *   # 不传参时按下面顺序自动确定，也可用环境变量 PROTO_BASE 指定：
+ *   #   1. 从脚本位置逐级向上，找含「站点协议目录」的项目根
+ *   #   2. 当前工作目录
  *
  * 退出码：0 = 无问题；1 = 发现问题（可直接接进批处理）
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const BASE = path.resolve(process.argv[2] || process.env.PROTO_BASE || 'C:/Users/<用户名>/Desktop/新api接口-dxos')
+/* ---- 自动推导默认扫描根目录（不写死任何用户名/盘符） ---- */
+// 判定「项目根」的条件：该目录下同时存在 dxos-skills 和至少一个站点协议目录。
+// 只认 dxos-skills 会误判（仓库自己也在里面），必须要求站点目录一起出现。
+const SITE_HINTS = ['佳速api文档', '七牛', 'aicost', 'change2pro', 'sudashuiapi', 'MegabyAI', 'meai', '土豆']
+function looksLikeProjectRoot(dir) {
+  try {
+    const names = new Set(fs.readdirSync(dir))
+    if (!names.has('dxos-skills')) return false
+    return SITE_HINTS.some((s) => names.has(s))
+  } catch {
+    return false
+  }
+}
+
+function inferBaseDir() {
+  // 技能常装在用户目录（~/.workbuddy/skills/…），不在项目树内，
+  // 所以推导顺序：① 当前工作目录及其祖先 → ② 脚本位置及其祖先 → ③ CWD
+  const candidates = []
+
+  // ① 从 CWD 逐级向上
+  let dir = process.cwd()
+  for (let i = 0; i < 10; i += 1) {
+    candidates.push(dir)
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  // ② 从脚本位置逐级向上
+  dir = path.dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 10; i += 1) {
+    candidates.push(dir)
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  for (const c of candidates) if (looksLikeProjectRoot(c)) return c
+
+  // ③ 退而求其次：CWD 下有 dxos-skills 就当项目根；再不行用 CWD
+  return process.cwd()
+}
+
+const BASE = path.resolve(process.argv[2] || process.env.PROTO_BASE || inferBaseDir())
 
 /* ---- 与 validator.ts 完全一致的正则与常量 ---- */
 const ID_RE = /^[a-z0-9][a-z0-9:_-]{1,63}$/
@@ -138,12 +184,40 @@ function opRefs(op) {
 }
 
 /* ---- 递归找 json ---- */
+// 只收录「看起来是 DX OS 协议」的 json：
+//   ① 顶层 schemaVersion === 'dx-protocol/v2'，或
+//   ② 顶层 kind 为 'provider' / 'model'
+// 这样 references/*.example.json（参数模板、探针样例）等非协议 json
+// 不会被误当成协议文件，避免出现 schemaVersion 假阳性。
+function isProtocolDoc(file) {
+  try {
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'))
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return false
+    if (doc.schemaVersion === 'dx-protocol/v2') return true
+    if (doc.kind === 'provider' || doc.kind === 'model') return true
+    return false
+  } catch {
+    return false
+  }
+}
+
 function walkJson(dir) {
   const out = []
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const e of entries) {
     const p = path.join(dir, e.name)
-    if (e.isDirectory()) out.push(...walkJson(p))
-    else if (e.name.endsWith('.json')) out.push(p)
+    // 跳过常见非源码目录，避免扫到克隆体/依赖
+    if (e.isDirectory()) {
+      if (e.name === 'node_modules' || e.name === '.git') continue
+      out.push(...walkJson(p))
+    } else if (e.name.endsWith('.json') && isProtocolDoc(p)) {
+      out.push(p)
+    }
   }
   return out
 }

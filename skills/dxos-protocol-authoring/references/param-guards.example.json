@@ -1,6 +1,7 @@
 {
   "_comment": "dxos-protocol-authoring 示例配置：为 6 个站点的视频协议断言参数取值白名单。baseDir 指向协议根目录，targets 里每个条目 = 一个「模型 × 上游合法取值集合」。resolution 写 null 表示上游不接受该字段（出现即失败）。合法集合必须来自各站接入文档，不要凭感觉写。",
-  "baseDir": "C:/Users/<用户名>/Desktop/新api接口-dxos",
+  "_baseDir说明": "baseDir 支持占位符，会在运行时自动展开：$HOME / ${HOME} / <用户名> / ~。留空则用脚本自动推导的项目根。也可用环境变量 PROTO_BASE 覆盖。",
+  "baseDir": "$HOME/Desktop/新api接口-dxos",
   "targets": [
     {
       "label": "MegabyAI / videos-standard",

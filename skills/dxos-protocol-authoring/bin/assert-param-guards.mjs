@@ -11,7 +11,7 @@
  *
  * config.json 格式（见 references/param-guards.example.json）:
  * {
- *   "baseDir": "C:/path/to/protocols",
+ *   "baseDir": "$HOME/Desktop/新api接口-dxos",   // 支持 $HOME/<用户名>/~ 占位符，留空用 CWD
  *   "canvas": { ...可选，覆盖面板真实选项集... },
  *   "targets": [
  *     {
@@ -36,7 +36,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { resolveEngineDir } from './dxos-paths.mjs'
+import { resolveEngineDir, expandUserPlaceholders } from './dxos-paths.mjs'
 
 // Canvas「API 生成」面板真实提供的选项（从 canvas 应用 bundle 抽取，2026-09）
 const DEFAULT_CANVAS = {
@@ -54,7 +54,10 @@ if (!configPath) {
 }
 
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-const baseDir = config.baseDir || '.'
+// baseDir 支持占位符（$HOME / <用户名> / ~），换电脑无需改配置；
+// 留空则退回当前工作目录。也可用 PROTO_BASE 环境变量覆盖。
+const rawBase = process.env.PROTO_BASE || config.baseDir || '.'
+const baseDir = path.resolve(expandUserPlaceholders(rawBase))
 const CANVAS = { ...DEFAULT_CANVAS, ...(config.canvas || {}) }
 const engineDir = resolveEngineDir()
 const { compileProtocolPlan } = await import(pathToFileURL(path.join(engineDir, 'compiler.ts')).href)

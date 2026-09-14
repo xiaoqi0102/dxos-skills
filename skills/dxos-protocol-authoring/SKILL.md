@@ -416,34 +416,43 @@ hr(t) => "1k" | "2k" | "4k"           // 小写，不是 uiSchemas 里声明的�
 # → 读 .dx-runtime/.active-runtime 定位真正在跑的运行时。升级 DX OS 后无需改脚本。
 # 手动指定：DXOS_ROOT / DXOS_SERVER / DXOS_ENGINE / DXOS_DATA
 # 用 Windows 路径，Git Bash 下加 MSYS_NO_PATHCONV=1
-N="C:/Users/<用户名>/.workbuddy/binaries/node/versions/22.22.2-3/node.exe"   # 用系统提示里 Available Runtimes 的 (managed) 绝对路径
-S="C:/Users/<用户名>/.workbuddy/skills/dxos-protocol-authoring/bin"
+
+# ① 先载入环境（自动解析当前机器的用户名 / 技能目录 / Node / DXOS 位置）
+#    换电脑复制本目录后无需改任何路径，载入即可用下面全部变量
+. "<本目录>/scripts/dx-env.sh"     # 例：. ~/Desktop/新api接口-dxos/dxos-skills/scripts/dx-env.sh
+# 载入后可用：$DX_NODE $DX_BIN $DX_SKILL $DX_HOME $DX_USER $DXOS_ROOT
+# 想临时指定 Node：DX_NODE=<路径> . scripts/dx-env.sh
+
+# ② 或用 Node 模块直接查看当前机器解析结果
+node "$DX_BIN/dxos-paths.mjs"
 
 # ① schema + 编译（不传 --intent 则遍历全部 capabilities）
-MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/verify-protocol.mjs" \
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/verify-protocol.mjs" \
   "<provider.json>" "<model.json>" [--intent video.image_to_video] [--model-id <上游模型名>]
 
 # ② 取值白名单断言（带兜底的协议必跑）
-MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/assert-param-guards.mjs" \
-  "C:/Users/<用户名>/.workbuddy/skills/dxos-protocol-authoring/references/param-guards.example.json"
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/assert-param-guards.mjs" \
+  "$DX_SKILL/references/param-guards.example.json"
 
 # ③ hash 核对（写仓库前必跑）
-MSYS_NO_PATHCONV=1 "$N" "$S/protocol-hash.mjs" "<protocol.json>" ...
-MSYS_NO_PATHCONV=1 "$N" "$S/protocol-hash.mjs" --verify-store "<data/custom-protocols-v2.json>"
+MSYS_NO_PATHCONV=1 "$DX_NODE" "$DX_BIN/protocol-hash.mjs" "<protocol.json>" ...
+MSYS_NO_PATHCONV=1 "$DX_NODE" "$DX_BIN/protocol-hash.mjs" --verify-store "<data/custom-protocols-v2.json>"
 
 # ④ 语义体检（静态分析；查前三关都拦不住的「能编译但功能坏掉」）
-MSYS_NO_PATHCONV=1 "$N" "$S/audit-semantics.mjs" "C:/Users/<用户名>/Desktop/新api接口-dxos"
+#    不传目录时自动定位项目根（含 dxos-skills 或站点目录的层级）
+MSYS_NO_PATHCONV=1 "$DX_NODE" "$DX_BIN/audit-semantics.mjs"
+#    也可显式指定：… "$DX_BIN/audit-semantics.mjs" "<协议根目录>"
 
 # ⑤ 本地素材路由探针（有图生图/图生视频/参考素材的协议必跑）
-MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/probe-local-input.mjs" \
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-local-input.mjs" \
   "<model.json>" "<provider.json>"
 
 # ⑥ 尺寸取值矩阵回归（图片类档案必跑；专抓「参数没生效但也不报错」）
-MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/probe-ratio.mjs" \
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-ratio.mjs" \
   "<model.json>" "<provider.json>"
 
 # ⑦ 参数面板逐格核对（改了 modelProfiles.match / uiSchemas 必跑；专抓「界面上少格子」）
-MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/probe-panel.mjs" \
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-panel.mjs" \
   "<model.json>" "<provider.json>" [--models a,b,c]
 ```
 ③ 单文件模式打印 `<hash>  <kind>/<id>  <路径>`；`--verify-store` 模式逐条核对仓库里每个版本的 hash，并检查 `activeVersion` 是否存在，**有对不上的版本时 exit 1**（那些版本会被 DX OS 静默丢弃）。
@@ -451,7 +460,7 @@ MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/probe-panel.mjs" \
 > ⚠️ 仓库体检**必须带 `--verify-store`**，直接把目录或站点 JSON 传进去只会报
 > `[读取失败] … EISDIR: illegal operation on a directory, read`。正确用法（仓库路径由 `dxos-paths.mjs` 的 `resolveDataDir()` 给出）：
 > ```bash
-> MSYS_NO_PATHCONV=1 "$N" "$S/protocol-hash.mjs" --verify-store "<DXOS 安装根目录>/data/custom-protocols-v2.json"
+> MSYS_NO_PATHCONV=1 "$DX_NODE" "$DX_BIN/protocol-hash.mjs" --verify-store "$DXOS_ROOT/data/custom-protocols-v2.json"
 > # 期望：体检完成：8 个版本，0 个 hash 对不上（会被静默丢弃）
 > ```
 
@@ -590,7 +599,7 @@ audios: （未下发）
 DX OS 把每次协议任务的**真实请求体 + 编译后的执行计划**存进 SQLite：
 
 - `data/protocol-tasks.db` → 表 `ai_protocol_tasks`，关键列 `request_json` / `plan_json` / `error_message` / `status` / `workflow_state_json` / `remote_task_id` / `poll_attempt`
-- 用托管 Python：`C:/Users/<用户名>/.workbuddy/binaries/python/versions/3.13.12/python.exe`
+- 用托管 Python：`$DX_HOME/.workbuddy/binaries/python/versions/3.13.12/python.exe`（`$DX_HOME` 由 `scripts/dx-env.sh` 自动解析，见第七节）
 - `plan_json` 里的 `steps[].request.body` 就是真正发出去的 body —— 定位「UI 到底传了什么」最快的路径
 
 ⚠️ **必须把 `db` + `-wal` + `-shm` 三个文件一起复制出来再打开**。这个库是 WAL 模式且 WAL 可达 20 MB，**最新几十条任务全在 WAL 里**：
