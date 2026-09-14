@@ -1,22 +1,71 @@
-# 依赖与缓存
-node_modules/
-__pycache__/
-*.pyc
+# ==========================================================
+# 【最高优先级】绝对禁止提交任何 API Key / 令牌 / 密钥
+# ==========================================================
+# 任何人不得用 `git add -f` 绕过以下规则。
+# 如需在仓库内提供配置模板，一律用 *.example.json 且值必须为占位符。
 
-# 协议仓库与数据库（含真实站点密钥，绝不提交）
+# --- 密钥/凭据类文件（任意层级） ---
+**/*.env
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.sample
+!**/.env.template
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.keystore
+**/*.secret
+**/*.secrets
+**/*.credential
+**/*.credentials
+**/credentials.json
+**/secrets.json
+**/service-account*.json
+**/auth.json
+**/token.json
+**/apikey.json
+**/api-key.json
+**/api_key.json
+**/keys.json
+
+# --- 命名里带 key/token/secret/credential 的配置 ---
+**/*apikey*
+**/*api-key*
+**/*api_key*
+**/*-key.json
+**/*_key.json
+**/*.key.json
+**/*token*
+**/*secret*
+**/*credential*
+!**/*.example.json
+!**/*.sample.json
+!**/*.template.json
+
+# --- 本机实跑产物与临时取证材料（常含真实密钥） ---
+*.local.json
+*.local.*
 data/
 *.db
 *.db-wal
 *.db-shm
-
-# 本机临时取证材料
 *.bak
 *.bak-*
 _*.mjs
 tmp/
 .tmp/
+**/*.request-body.json
+**/*-captured*.json
 
-# 编辑器
+# --- 依赖与缓存 ---
+node_modules/
+__pycache__/
+*.pyc
+
+# --- 编辑器与系统 ---
 .vscode/
 .idea/
 .DS_Store
