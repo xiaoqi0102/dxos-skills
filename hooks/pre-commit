@@ -1,0 +1,95 @@
+#!/bin/sh
+# ==========================================================
+# DX OS Skills — 提交前密钥扫描 (pre-commit)
+# ==========================================================
+# 目的：绝对禁止任何 API Key / 令牌 / 密钥进入提交。
+# 文件名规则 (.gitignore) 只能挡住"名字可疑"的文件；
+# 本钩子扫描"将要提交的内容"，拦截藏在普通文件里的密钥。
+#
+# 实现说明：用一次 awk 扫描替代"每行多次 grep"，
+#   在 Windows/cygwin 下避免反复 spawn 进程导致的卡顿。
+#
+# 逃生舱（仅在确认误报时使用，且需你本人知情）：
+#   SKIP_SECRET_SCAN=1 git commit ...
+# ==========================================================
+
+if [ "$SKIP_SECRET_SCAN" = "1" ]; then
+  echo "[密钥扫描] 已通过 SKIP_SECRET_SCAN=1 跳过，请确认你清楚自己在做什么"
+  exit 0
+fi
+
+files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+found=0
+
+for f in $files; do
+  [ -f "$f" ] || continue
+  case "$f" in
+    *.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.pdf|*.zip|*.mp3|*.mp4|*.woff|*.woff2|*.ttf) continue ;;
+  esac
+
+  # 单次 awk 完成全部 4 条规则的扫描
+  out=$(awk -v file="$f" '
+    # 占位符/文档示例，放行
+    function placeholder(s) {
+      return (s ~ /YOUR_/ || s ~ /<[^>]*>/ || s ~ /\{\{/ || s ~ /xxx/ \
+           || s ~ /placeholder/ || s ~ /example/ || s ~ /sample/ \
+           || s ~ /redacted/ || s ~ /dummy/ || s ~ /fake/)
+    }
+    {
+      line = $0
+      if (placeholder(line)) next
+      hit = ""
+      # 规则1：著名供应商密钥前缀
+      if (line ~ /sk-[A-Za-z0-9_-]{20,}/ \
+       || line ~ /sk-proj-[A-Za-z0-9_-]{20,}/ \
+       || line ~ /sk-ant-[A-Za-z0-9_-]{20,}/ \
+       || line ~ /AIza[0-9A-Za-z_-]{30,}/ \
+       || line ~ /AKIA[0-9A-Z]{16}/ \
+       || line ~ /ghp_[A-Za-z0-9]{30,}/ \
+       || line ~ /gho_[A-Za-z0-9]{30,}/ \
+       || line ~ /github_pat_[A-Za-z0-9_]{30,}/ \
+       || line ~ /glpat-[A-Za-z0-9_-]{16,}/ \
+       || line ~ /hf_[A-Za-z0-9]{30,}/ \
+       || line ~ /sk_live_[A-Za-z0-9]{16,}/ \
+       || line ~ /sk_test_[A-Za-z0-9]{16,}/ \
+       || line ~ /volc_[A-Za-z0-9]{16,}/) hit = "供应商密钥前缀"
+      # 规则2：Authorization / Bearer / api-key 赋值
+      else if (tolower(line) ~ /(authorization|bearer|x-api-key|api[_-]?key)/ \
+            && line ~ /[[:space:]]*[:=][[:space:]]*["\x27]?(bearer[[:space:]]+)?[A-Za-z0-9_.-]{20,}/) hit = "Authorization/API-Key 赋值"
+      # 规则3：JSON 密钥字段长字面量
+      else if (tolower(line) ~ /"(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|auth[_-]?token|secret[_-]?key|client[_-]?secret|access[_-]?key[_-]?secret|private[_-]?key|password|passwd|bearer)"[[:space:]]*:[[:space:]]*"[^"]{20,}"/) hit = "JSON 密钥字段长字面量"
+      # 规则4：高熵长串 + 密钥关键词
+      else if (line ~ /[A-Za-z0-9_-]{40,}/ && tolower(line) ~ /(key|token|secret|auth|passwd|password|bearer|credential)/) hit = "疑似高熵密钥串"
+
+      if (hit != "") {
+        snippet = substr(line, 1, 120)
+        printf("  [命中] %s  ->  %s:%d\n         %s\n", hit, file, NR, snippet)
+      }
+    }
+  ' "$f" 2>/dev/null)
+
+  if [ -n "$out" ]; then
+    found=1
+    printf '%s\n' "$out"
+  fi
+done
+
+if [ "$found" = "1" ]; then
+  echo ""
+  echo "=========================================="
+  echo " 提交被阻断：检测到疑似 API Key / 密钥"
+  echo "=========================================="
+  echo ""
+  echo " 如何处理："
+  echo "   1) 把密钥换成占位符，例如  \"apiKey\": \"YOUR_API_KEY\""
+  echo "   2) 把含密钥的文件移出仓库 / 加入 .gitignore"
+  echo "   3) 确认是误报时，用  SKIP_SECRET_SCAN=1 git commit ... 自行承担风险"
+  echo ""
+  echo " 注意：若这个密钥已经被提交过哪怕一次，"
+  echo "   它就已经泄漏到 git 历史里，必须去服务商后台吊销并重新签发。"
+  echo ""
+  exit 1
+fi
+
+exit 0
