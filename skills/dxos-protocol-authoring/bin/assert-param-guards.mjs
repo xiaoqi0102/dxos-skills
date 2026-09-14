@@ -11,7 +11,7 @@
  *
  * config.json 格式（见 references/param-guards.example.json）:
  * {
- *   "baseDir": "$HOME/Desktop/新api接口-dxos",   // 支持 $HOME/<用户名>/~ 占位符，留空用 CWD
+ *   "baseDir": "",   // 留空则自动定位项目根；也可用 $HOME/<用户名>/~ 占位符或 PROTO_BASE
  *   "canvas": { ...可选，覆盖面板真实选项集... },
  *   "targets": [
  *     {
@@ -35,7 +35,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import { resolveEngineDir, expandUserPlaceholders } from './dxos-paths.mjs'
 
 // Canvas「API 生成」面板真实提供的选项（从 canvas 应用 bundle 抽取，2026-09）
@@ -54,9 +54,26 @@ if (!configPath) {
 }
 
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-// baseDir 支持占位符（$HOME / <用户名> / ~），换电脑无需改配置；
-// 留空则退回当前工作目录。也可用 PROTO_BASE 环境变量覆盖。
-const rawBase = process.env.PROTO_BASE || config.baseDir || '.'
+// baseDir 解析优先级：PROTO_BASE 环境变量 > 配置里的 baseDir > 自动推导项目根。
+// baseDir 支持占位符（$HOME / <用户名> / ~），换电脑无需改配置。
+function inferProjectRoot() {
+  const hints = ['dxos-skills', '佳速api文档', '七牛', 'aicost', 'change2pro', 'sudashuiapi', 'MegabyAI']
+  const look = (start) => {
+    let dir = start
+    for (let i = 0; i < 10; i += 1) {
+      try {
+        const names = new Set(fs.readdirSync(dir))
+        if (hints.filter((h) => names.has(h)).length >= 1 && names.has('dxos-skills')) return dir
+      } catch { /* 无权限继续向上 */ }
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    return ''
+  }
+  return look(process.cwd()) || look(path.dirname(fileURLToPath(import.meta.url))) || process.cwd()
+}
+const rawBase = process.env.PROTO_BASE || config.baseDir || inferProjectRoot()
 const baseDir = path.resolve(expandUserPlaceholders(rawBase))
 const CANVAS = { ...DEFAULT_CANVAS, ...(config.canvas || {}) }
 const engineDir = resolveEngineDir()

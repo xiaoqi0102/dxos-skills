@@ -165,11 +165,11 @@ cp -r dxos-skills/skills/dxos-protocol-authoring ~/.workbuddy/skills/
 > 本仓库是**多技能集合**：每个技能各自一个目录，整体复制即可，不会互相干扰。
 > 仓库里的 `README.md`（本文件）是说明文档，会一起复制过去，不影响技能加载。
 
-**方式 B：手工解压 zip 包**
+**方式 B：从已有克隆复制**
 
-```powershell
-Expand-Archive -Path "C:\Users\<用户名>\Desktop\新api接口-dxos\dxos-protocol-authoring.zip" `
-               -DestinationPath "C:\Users\<用户名>\.workbuddy\skills" -Force
+```bash
+# 假设你已有一份 dxos-skills 克隆，路径按实际情况写
+cp -r "<dxos-skills 所在目录>/skills/dxos-protocol-authoring" "$HOME/.workbuddy/skills/"
 ```
 
 （包内顶层已保留 `dxos-protocol-authoring/` 文件夹，解压后无需再改名。）
@@ -273,7 +273,7 @@ MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/assert-param-guards.m
 
 ```json
 {
-  "baseDir": "C:/Users/<用户名>/Desktop/新api接口-dxos",
+  "baseDir": "",
   "targets": [
     {
       "label": "aicost / seedance2.5",
@@ -322,8 +322,10 @@ MSYS_NO_PATHCONV=1 "$N" "$S/protocol-hash.mjs" --verify-store "<data/custom-prot
 ### ④ `audit-semantics.mjs` —— 语义体检（静态分析）
 
 ```bash
-# 默认扫 C:/Users/<用户名>/Desktop/新api接口-dxos，也可传目录或用 PROTO_BASE 环境变量
-MSYS_NO_PATHCONV=1 "$N" "$S/audit-semantics.mjs" "C:/Users/<用户名>/Desktop/新api接口-dxos"
+# 不传目录时自动定位（优先当前工作目录向上找项目根），也可显式传目录或用 PROTO_BASE
+MSYS_NO_PATHCONV=1 "$N" "$S/audit-semantics.mjs"
+# 显式指定：
+MSYS_NO_PATHCONV=1 "$N" "$S/audit-semantics.mjs" "<协议根目录>"
 ```
 
 **为什么需要它**：前三关（schema / 编译 / 取值）对付的是"装不进去""编译不过"和"取值越界"。但还有一类问题**能装、能编译，功能却是坏的**——不报任何错，只是某个功能静默失效。比如档案级 `uiSchemas` 写成字典（参数面板一格都不显示，但覆盖率仍显示全绿）、`response` 里键名写错（引擎不认识就丢弃）、selector 用 `$.a[].b`（0.3.3 根本不解析）。这类问题只能靠静态规则比对发现。
@@ -1071,7 +1073,7 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()                # 只�
 > - **引用规范来源**：`创建视频(推荐).md`、`佳速api开发文档.md`、`查询视频(推荐).md`、`获取模型列表.md`。
 > - ⚠️ **过真人（`/v1/face-style`）已整块移除**（2026-09-14，见追加⑤）：`capabilities` 去 `image.edit`、删 `face-style` operation、删 `image.edit` workflow、删 `jiasu-face-style` 档案与 uiSchema、`jiasu-video` 去 `face` 字段。原 `过真人接口（免费）.md` 文档仍在 `佳速api文档/`（仅作历史资料，协议已不再引用），本协议只做视频生成。
 
-**协议文件位置**：`C:\Users\<用户名>\Desktop\新api接口-dxos\<站点目录>\`
+**协议文件位置**：`<项目根>/<站点目录>/`（站点目录名如 `佳速api文档`、`七牛`…，项目根位置随意）
 
 ---
 
@@ -1226,7 +1228,7 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()                # 只�
 | ⑤ 陷阱②：参数序 | 两个探针是 `<model.json> <provider.json>`（先模型后平台），传反不报错但无输出 |
 | ③ 陷阱③：必须 `--verify-store` | 直接传目录报 `EISDIR: illegal operation on a directory, read`；正确用法见 ③ 节 |
 | ① 陷阱④：必须 `--experimental-transform-types` | 漏了抛 `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`（要 import 引擎 `.ts`）。本次首轮即踩到，SKILL.md 示例本身写对了，是调用时漏加 |
-| 重新打包 | 桌面 `dxos-protocol-authoring.zip` 已重打（13 文件），解压后与本地技能**逐字节一致、无 `LYQ` 残留** |
+| 发布整包 | 仓库内 `skills/dxos-protocol-authoring/` 与本地技能目录**逐字节一致**，无历史机器名残留 |
 
 ---
 

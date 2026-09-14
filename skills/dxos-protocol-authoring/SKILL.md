@@ -417,11 +417,15 @@ hr(t) => "1k" | "2k" | "4k"           // 小写，不是 uiSchemas 里声明的�
 # 手动指定：DXOS_ROOT / DXOS_SERVER / DXOS_ENGINE / DXOS_DATA
 # 用 Windows 路径，Git Bash 下加 MSYS_NO_PATHCONV=1
 
-# ① 先载入环境（自动解析当前机器的用户名 / 技能目录 / Node / DXOS 位置）
-#    换电脑复制本目录后无需改任何路径，载入即可用下面全部变量
-. "<本目录>/scripts/dx-env.sh"     # 例：. ~/Desktop/新api接口-dxos/dxos-skills/scripts/dx-env.sh
-# 载入后可用：$DX_NODE $DX_BIN $DX_SKILL $DX_HOME $DX_USER $DXOS_ROOT
-# 想临时指定 Node：DX_NODE=<路径> . scripts/dx-env.sh
+# ① 先载入环境（自动解析当前机器的用户名 / 技能目录 / Node / DXOS 位置，
+#    并从脚本自身位置推出仓库根，仓库放哪都行）
+#    路径写 dxos-skills 实际所在位置，例如：
+#      . "/d/dxos-skills/scripts/dx-env.sh"
+#      . "/e/work/my-dxos/dxos-skills/scripts/dx-env.sh"
+#      . "/c/Users/me/Desktop/某个目录/dxos-skills/scripts/dx-env.sh"
+. "<dxos-skills 所在目录>/scripts/dx-env.sh"
+# 载入后可用：$DX_REPO $DX_NODE $DX_BIN $DX_SKILL $DX_HOME $DX_USER $DX_PROJECT $DXOS_ROOT
+# 想临时指定：DX_NODE=<路径> DX_SKILLS=<目录> . scripts/dx-env.sh
 
 # ② 或用 Node 模块直接查看当前机器解析结果
 node "$DX_BIN/dxos-paths.mjs"
