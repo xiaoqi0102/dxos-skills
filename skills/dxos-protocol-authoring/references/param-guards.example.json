@@ -6,7 +6,7 @@
     {
       "label": "MegabyAI / videos-standard",
       "provider": "MegabyAI/megabyai.provider.json",
-      "model": "MegabyAI/megabyai.video.model.json",
+      "model": "MegabyAI/megabyai.model.json",
       "modelId": "videos-standard",
       "intents": [
         "video.text_to_video",

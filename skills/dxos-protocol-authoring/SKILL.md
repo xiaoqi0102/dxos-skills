@@ -48,7 +48,8 @@ ls -d "<DXOS根目录>"/.dx-runtime/versions/runtime-* | sort | tail -1
 | 规则 | 说明 |
 | --- | --- |
 | `workflow.result.kind` | **必填** `image`/`video`/`audio`，缺了报「产物 MIME 与输出类型 undefined 不匹配」 |
-| **模型协议 `id` == 平台协议 `id`** | **同一平台的 provider.json 与 model.json 必须写同一个 `id` 值**。不等不会报错，只是**静默不绑定** —— 站点里看不到模型，最难查的一类问题。<br>约定：一个平台一个 `id`，形如 `jiasuapi` / `qiniu-api-openai` / `aicost` / `change2pro` / `megabyai` / `sudashuiapi`，即**用小写平台标识**（不带 `-provider` / `-model` 后缀）。<br>**同一平台有多个 model.json（如分图片/视频两个档案）时，它们的 `id` 也全部相同**，靠 `modelProfiles` 区分，不靠 `id`。<br>自查：`python -c "import json;print(json.load(open('x.provider.json'))['id'], json.load(open('x.model.json'))['id'])"` 两边必须打印同一个值 |
+| **模型协议 `id` == 平台协议 `id`** | **同一平台的 provider.json 与 model.json 必须写同一个 `id` 值**。不等不会报错，只是**静默不绑定** —— 站点里看不到模型，最难查的一类问题。<br>约定：一个平台一个 `id`，形如 `jiasuapi` / `qiniu-api-openai` / `aicost` / `change2pro` / `megabyai` / `sudashuiapi`，即**用小写平台标识**（不带 `-provider` / `-model` 后缀）。<br>自查：`python -c "import json;print(json.load(open('x.provider.json'))['id'], json.load(open('x.model.json'))['id'])"` 两边必须打印同一个值 |
+| **一个平台只能有一个 `model.json`** | **绝不按类型拆分文件**。图片（`image.*`）、视频（`video.*`）、LLM 等全部 capability **写在同一个 model.json 里**，用 `modelProfiles` 分档案区分（范例：`aicost.model.json` 一个文件装了 8 个 capability + 6 个档案，图片视频并存）。<br>文件命名一律 `<平台标识>.model.json` —— **不要**加类型段（`x.video.model.json` / `x.image.model.json` 都是错的，会让人误以为可以拆）。<br>平台协议同理：一个平台只有 `<平台标识>.provider.json` 一个文件 |
 | provider 的 `models` | **必填**（`types.ts:149` 非可选）。缺了报三条：`models.method 不受支持` + `models.path 必须是相对路径、HTTPS，或 localhost HTTP` + `models.response 缺失`。标准写法 `{ "method": "GET", "path": "/v1/models", "response": { "data": ["$.data", "$.models"] } }` —— 手册没写模型列表端点也要补，这是 schema 硬要求 |
 | operation id | 必须匹配 `/^[a-z0-9][a-z0-9:_-]{1,63}$/`，即**全小写**。`faceStyle` 这类驼峰报「operation id 无效」，改完记得同步 workflow 里的 `submit` 引用 |
 | `$cardinality` | 必须含 `from` `zero` `one` `many`，只能额外含 `two`；少一个 `one` 直接校验失败。分支内可用 `item`（首项）与 `items`（整个数组） |
