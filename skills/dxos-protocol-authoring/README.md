@@ -39,6 +39,43 @@ DX OS 运行时路径**无需手动指定**——`bin/dxos-paths.mjs` 会自动�
 
 ---
 
+## 密钥安全（协议里要填 apiKey 的，务必先看）
+
+协议文件的 `provider` 段通常要填上游 `apiKey`。**真实密钥绝不能进版本库**——本技能所在的 `dxos-skills` 仓库装了三道防线：
+
+| 防线 | 位置 | 作用 |
+| --- | --- | --- |
+| 文件名 | `.gitignore` | 挡住 `.env` / `*.key` / `*.pem` / `*apikey*.json` 等 |
+| 文件内容 | `hooks/pre-commit` | 提交前扫描，拦住藏在普通文件里的密钥 |
+| 手动/CI | `scripts/scan-secrets.mjs` | 随时全仓扫描 |
+
+克隆后**先启用钩子**（`.git/hooks` 不随仓库分发）：
+
+```bash
+sh scripts/install-hooks.sh                                        # Git Bash / macOS / Linux
+powershell -ExecutionPolicy Bypass -File scripts/install-hooks.ps1 # Windows
+```
+
+手动体检：
+
+```bash
+node scripts/scan-secrets.mjs          # 全仓库
+node scripts/scan-secrets.mjs --staged # 只看暂存区
+```
+
+**协议文件里请用占位符**，真实密钥写在被忽略的 `*.local.json` 或直接填进 DX OS 界面：
+
+```json
+{
+  "kind": "provider",
+  "auth": { "type": "bearer", "apiKey": "YOUR_API_KEY" }
+}
+```
+
+> 注意：钩子只能拦住"还没提交"的密钥。**已经被提交过的密钥，等于已经泄漏到 git 历史**，必须去服务商后台吊销并重新签发，光删文件没用。
+
+---
+
 ## 仓库内容
 
 | 路径 | 内容 |
