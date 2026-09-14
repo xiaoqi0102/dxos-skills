@@ -74,6 +74,7 @@ ls -d "<DXOS根目录>"/.dx-runtime/versions/runtime-* | sort | tail -1
 | **异步任务重试** | **只在 operation 上写 `retry` 才生效**（`compiler.ts:351` 把 `operation.retry` 拷进编译后的 request，`workflow.ts:237-256` 消费它）。不写 `retry.retryNetwork: true` 时 `totalAttempts` 默认 1 且网络错误**不重试** → **一次瞬时 `fetch failed` 就把已经提交成功的异步任务永久判死**。异步视频/图片必写；轮询 `poll` 也要配 `backoff`/`maxIntervalMs`/`maxDurationMs`（只写 `intervalMs` 时上限回落到默认 30 分钟） |
 | 别名 | 手册给了别名（`ratio` / `aspect_ratio` 等价）时选标注「推荐/实际生效」的那个，其余当兼容候选写进 `$coalesce`，**别同时下发多个别名** |
 | 时间戳 | 一律用命令取（`date`），不要自己算 |
+| **`label` 命名** | 协议顶层 `label` 是**给用户看的显示名**，一律用中文，格式 `<平台中文名> <类型>`（**平台名与类型之间留一个空格**）：<br>· provider → `<平台中文名> 平台`（如 `佳速API 平台`）<br>· model 顶层 → `<平台中文名> <类型>模型`（如 `佳速API 视频模型` / `七牛 Modelink 图片模型`）<br>· `modelProfiles.<id>.label` → `<平台中文名> <类型>`（如 `佳速API 视频`）<br>**例外**：档案 label 若本质是**上游模型名**，保持英文原样（`GPT Image 2` / `Gemini 3 Pro Image` / `MiniMax H3` / `Seedance 2.5`）—— 翻译反而对不上上游，不要硬翻。<br>平台中文名**必须从该站接入文档/官网核实**，不要从域名音译硬凑（曾把 `sudashuiapi` 误猜成「苏妲水API」，实为 **SdAS API**）。各站正确名见第十一节 |
 | 安全 | 协议文件里**绝不写真实令牌/用户数据**，用 `credentialRef` 引用，令牌由用户在界面填 |
 
 ## 四、UI 参数面板：`uiSchemas` / `limits` / 逐格渲染
@@ -778,6 +779,19 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()          # 只该有 2
 
 现状：MegabyAI / aicost（h3 + seedance2.5 + seedance2.0）/ 佳速 / sudashuiapi **均已加兜底并通过断言**。
 修改前先读各站接入文档确认合法集合，改完必须跑第七节的**三步**校验。
+
+### 各站平台中文名（写 `label` 时照这份表，别自己编）
+
+| 目录 | 平台中文名 | `label` 写法示例 | 名称依据 |
+| --- | --- | --- | --- |
+| `佳速api文档` | **佳速API** | `佳速API 平台` / `佳速API 视频模型` | 域名 `ai.jiasuapi.com`，文档自称「佳速 API」 |
+| `七牛` | **七牛 Modelink** | `七牛 Modelink 平台` / `七牛 Modelink 图片模型` | 文档「Modelink 图像生成 API」，域名 `api.modelink.ai` |
+| `aicost` | **AICost** | `AICost 平台` / `AICost 图片模型` | 域名 `www.aicost.me`，文档「aicost.me 图片插件模型接口」 |
+| `change2pro` | **Change2Pro** | `Change2Pro 平台` / `Change2Pro 图片模型` | 文档「Change2Pro 香蕉生图 API 接入文档」 |
+| `MegabyAI` | **MegabyAI** | `MegabyAI 平台` / `MegabyAI 视频模型` | 域名 `newapi.megabyai.cc` |
+| `sudashuiapi` | **SdAS API** | `SdAS API 平台` / `SdAS API 视频模型` | **用户确认（2026-09-14）**。⚠️ 不要从域名音译成「苏妲水」 |
+
+> 新增站点时**先问用户或读文档核实平台名**，核实不到就保留英文原名，**不要从域名硬凑中文**。
 
 ## 附：关键源码位置（想确认什么就去读）
 
