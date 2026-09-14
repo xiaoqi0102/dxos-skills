@@ -1,0 +1,115 @@
+{
+  "_comment": "dxos-protocol-authoring 示例配置：为 6 个站点的视频协议断言参数取值白名单。baseDir 指向协议根目录，targets 里每个条目 = 一个「模型 × 上游合法取值集合」。resolution 写 null 表示上游不接受该字段（出现即失败）。合法集合必须来自各站接入文档，不要凭感觉写。",
+  "baseDir": "C:/Users/<用户名>/Desktop/新api接口-dxos",
+  "targets": [
+    {
+      "label": "MegabyAI / videos-standard",
+      "provider": "MegabyAI/megabyai.provider.json",
+      "model": "MegabyAI/megabyai.video.model.json",
+      "modelId": "videos-standard",
+      "intents": [
+        "video.text_to_video",
+        "video.image_to_video",
+        "video.multi_reference",
+        "video.video_to_video",
+        "video.audio_reference"
+      ],
+      "allow": {
+        "resolution": ["480p", "720p"],
+        "ratio": ["16:9", "9:16", "1:1"],
+        "duration": { "min": 4, "max": 15 }
+      }
+    },
+    {
+      "label": "aicost / minimax-h3",
+      "provider": "aicost/aicost.provider.json",
+      "model": "aicost/aicost.model.json",
+      "modelId": "minimax-h3",
+      "intents": [
+        "video.text_to_video",
+        "video.image_to_video",
+        "video.first_last_frame",
+        "video.multi_reference",
+        "video.audio_reference"
+      ],
+      "allow": {
+        "resolution": ["1440P"],
+        "ratio": ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+        "duration": { "min": 5, "max": 15 }
+      }
+    },
+    {
+      "label": "aicost / seedance2.5",
+      "provider": "aicost/aicost.provider.json",
+      "model": "aicost/aicost.model.json",
+      "modelId": "seedance2.5",
+      "intents": [
+        "video.text_to_video",
+        "video.image_to_video",
+        "video.multi_reference",
+        "video.video_to_video",
+        "video.audio_reference"
+      ],
+      "allow": {
+        "resolution": ["720p", "1080p", "1k", "2k"],
+        "ratio": ["16:9", "9:16", "1:1"],
+        "duration": { "min": 1, "max": 30 }
+      }
+    },
+    {
+      "label": "aicost / seedance2.0",
+      "provider": "aicost/aicost.provider.json",
+      "model": "aicost/aicost.model.json",
+      "modelId": "seedance2.0",
+      "intents": [
+        "video.text_to_video",
+        "video.image_to_video",
+        "video.multi_reference",
+        "video.video_to_video",
+        "video.audio_reference"
+      ],
+      "allow": {
+        "resolution": ["480p", "720p", "1080p"],
+        "ratio": ["16:9", "9:16", "1:1"],
+        "duration": { "min": 1, "max": 30 }
+      }
+    },
+    {
+      "label": "佳速 / seedance-2.5-101010",
+      "provider": "佳速api文档/jiasu.provider.json",
+      "model": "佳速api文档/jiasu.model.json",
+      "modelId": "seedance-2.5-101010",
+      "intents": [
+        "video.text_to_video",
+        "video.image_to_video",
+        "video.multi_reference",
+        "video.video_to_video",
+        "video.audio_reference"
+      ],
+      "allow": {
+        "resolution": ["720p", "1080p"],
+        "ratio": ["16:9", "9:16", "1:1"],
+        "duration": { "min": 1, "max": 30 }
+      }
+    },
+    {
+      "label": "sudashuiapi / sd-api-2",
+      "provider": "sudashuiapi/sudashuiapi.provider.json",
+      "model": "sudashuiapi/sudashuiapi.model.json",
+      "modelId": "sd-api-2",
+      "intents": [
+        "video.text_to_video",
+        "video.image_to_video",
+        "video.multi_reference",
+        "video.video_to_video",
+        "video.audio_reference",
+        "video.first_last_frame"
+      ],
+      "allow": {
+        "resolution": null,
+        "ratio": ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9", "adaptive"],
+        "duration": { "min": 4, "max": 15 }
+      }
+    }
+  ]
+}

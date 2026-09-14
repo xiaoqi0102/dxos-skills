@@ -1,0 +1,49 @@
+[
+  {
+    "intent": "video.image_to_video",
+    "name": "① 单图 i2v + 附音频 → 期望 body 里【无】audios，images 带 type=first_frame",
+    "prompt": "图片中的人物开始跳舞 @图片1",
+    "params": { "duration": 10, "aspect_ratio": "16:9", "resolution": "720p" },
+    "inputs": {
+      "images": [{ "kind": "image", "role": "reference_image", "name": "character.png", "url": "https://example.com/character.png" }],
+      "audios": [{ "kind": "audio", "name": "voice.mp3", "url": "https://example.com/voice.mp3" }]
+    }
+  },
+  {
+    "intent": "video.first_last_frame",
+    "name": "② 首尾帧 + 附音频 → 期望 body 里【无】audios，images 带 first_frame + last_frame",
+    "prompt": "图片中的人物在奔跑 @图片1 @图片2",
+    "params": { "duration": 15, "aspect_ratio": "16:9", "resolution": "720p" },
+    "inputs": {
+      "images": [
+        { "kind": "image", "role": "first_frame", "name": "first.png", "url": "https://example.com/first.png" },
+        { "kind": "image", "role": "last_frame", "name": "last.png", "url": "https://example.com/last.png" }
+      ],
+      "audios": [{ "kind": "audio", "name": "voice.mp3", "url": "https://example.com/voice.mp3" }]
+    }
+  },
+  {
+    "intent": "video.multi_reference",
+    "name": "③ 多图多参考 + 附音频 → 期望 body 里【有】audios，images 为裸 URL 数组（无 type、无 name）",
+    "prompt": "@图片1 和 @图片2 在 @场景1 中聊天，@图片1 音频是 @音频1",
+    "params": { "duration": 15, "aspect_ratio": "16:9", "resolution": "720p" },
+    "inputs": {
+      "images": [
+        { "kind": "image", "role": "reference_image", "name": "char1.png", "url": "https://example.com/char1.png" },
+        { "kind": "image", "role": "reference_image", "name": "char2.png", "url": "https://example.com/char2.png" },
+        { "kind": "image", "role": "reference_image", "name": "scene1.png", "url": "https://example.com/scene1.png" }
+      ],
+      "audios": [{ "kind": "audio", "name": "voice1.mp3", "url": "https://example.com/voice1.mp3" }]
+    }
+  },
+  {
+    "intent": "video.audio_reference",
+    "name": "④ 音频参考 + 附音频 → 期望 body 里【有】audios",
+    "prompt": "@图片1 开口说话，声音用 @音频1",
+    "params": { "duration": 10, "aspect_ratio": "16:9", "resolution": "720p" },
+    "inputs": {
+      "images": [{ "kind": "image", "role": "reference_image", "name": "char1.png", "url": "https://example.com/char1.png" }],
+      "audios": [{ "kind": "audio", "name": "voice1.mp3", "url": "https://example.com/voice1.mp3" }]
+    }
+  }
+]

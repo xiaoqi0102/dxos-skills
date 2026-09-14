@@ -1,0 +1,23 @@
+# 依赖与缓存
+node_modules/
+__pycache__/
+*.pyc
+
+# 协议仓库与数据库（含真实站点密钥，绝不提交）
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# 本机临时取证材料
+*.bak
+*.bak-*
+_*.mjs
+tmp/
+.tmp/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
