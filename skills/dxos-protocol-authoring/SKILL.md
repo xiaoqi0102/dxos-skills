@@ -71,7 +71,7 @@ ls -d "<DXOS根目录>"/.dx-runtime/versions/runtime-* | sort | tail -1
 | 画布比例的取值 | 选「原图比例」时发的是 **GCD 约分后的具体比**（如 `1055:1491`，不是字面量 `source`）；分辨率一律**小写** `1k/2k/4k`。所以：①`lookup` 的 `cases` 只认字面量精确匹配，非枚举值要么给 `fallback`、要么原样透传（上游就近映射）；②分辨率若直接透传给枚举型上游 = **静默失效**（上游要大写 `2K`）。三种归宿与实测判据见第六节 |
 | 条件分支 | 引擎没有 `if`。模板层用 `$coalesce`（取第一个渲染后非空的结果）+ `$keyValue`（key 为空串时返回 `UNDEFINED`）组合成开关；`lookup` 的 `fallback` 不给值时返回 `undefined`，可让某个字段在请求里整个消失（如 `image_size` 缺省 → 上游用 auto） |
 | 异步任务 | 建议 5 秒轮询 + 最长等待；`failed` 时优先读错误字段 |
-| **真实 apiKey 禁止入库** | provider 段的 `apiKey` 一律写占位符 `YOUR_API_KEY`；真实密钥填进 DX OS 界面或落在被忽略的 `*.local.json`。本仓库有 `.gitignore` + `hooks/pre-commit` + `scripts/scan-secrets.mjs` 三道防线。**已提交过的密钥视为已泄漏，必须吊销重签** |
+| **真实 apiKey 禁止入库** | provider 段的 `apiKey` 一律写占位符 `YOUR_API_KEY`；真实密钥填进 DX OS 界面或落在被忽略的 `*.local.json`。本仓库有 `.gitignore` + `hooks/pre-commit` + `scripts/scan-secrets.mjs` 三道防线。**已提交过的密钥视为已泄漏，必须吊销重签**。<br>跑 `scripts/scan-secrets.mjs` 时**必须先 `cd` 进仓库根** —— 它默认走 `git ls-files`，在仓库外执行会报 `fatal: not a git repository`（不是脚本坏了） |
 | **异步任务重试** | **只在 operation 上写 `retry` 才生效**（`compiler.ts:351` 把 `operation.retry` 拷进编译后的 request，`workflow.ts:237-256` 消费它）。不写 `retry.retryNetwork: true` 时 `totalAttempts` 默认 1 且网络错误**不重试** → **一次瞬时 `fetch failed` 就把已经提交成功的异步任务永久判死**。异步视频/图片必写；轮询 `poll` 也要配 `backoff`/`maxIntervalMs`/`maxDurationMs`（只写 `intervalMs` 时上限回落到默认 30 分钟） |
 | 别名 | 手册给了别名（`ratio` / `aspect_ratio` 等价）时选标注「推荐/实际生效」的那个，其余当兼容候选写进 `$coalesce`，**别同时下发多个别名** |
 | 时间戳 | 一律用命令取（`date`），不要自己算 |
@@ -563,6 +563,11 @@ MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-pane
 MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/inspect-request-body.mjs" \
   "<provider.json>" "<model.json>" "<fixture.json>" [--intent <cap>] [--model <上游模型名>] [--base <baseUrl>] [--only <name 子串>]
 ```
+
+> ⚠️ **参数序与别的工具相反**：⑧ 是 **`<provider.json> <model.json>`**（先平台后模型），
+> 而 ⑤ `probe-local-input` / ⑥ `probe-ratio` 是 **`<model.json> <provider.json>`**（先模型后平台）。
+> 传反了**不会报错**，⑧ 只会打印一行用法提示就退出（`用法: node … <provider.json> <model.json> <fixture.json>`），
+> 极易误判成"脚本跑完了但没输出"。
 
 `fixture.json` 与 ① 的 `--tasks` 同格式（`[{intent,name,prompt,params,inputs}]`）。内置样例
 `references/request-fixture.example.json` 覆盖四 intent × 带图+带音频，专验 `audios` 规则，输出形如：
