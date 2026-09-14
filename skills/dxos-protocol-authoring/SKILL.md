@@ -132,6 +132,12 @@ Profile 用 `"uiSchemas": ["my-params"]` 按 id 引用。字段键是 **`key`**�
 - `modelProfiles` 用**字典形态**（`{ "profileId": {...} }`）；写成数组会导致 Profile 校验被静默跳过。`profile.workflows` 也是字典（`{ "<intent>": "<workflowId>" }`）。
 - Profile 匹配是**前缀命中 + 取第一个**：模型名以某个 `match` 值**开头**即算命中。
   → **笼统档必须排在具体型号之后**，否则具体型号会被笼统档冒名接管（能力/参数/限额全错，但覆盖率依然全绿）。
+  → ⚠️ **同族型号带小数版本号时会天然撞档**：`gpt-image-2` 是 `gpt-image-2.5-flare` 的**前缀**，
+    新加的 2.5 档案若排在旧的 `gpt-image-2` 档案**之后**，就会整族被旧档接走
+    （跑到 `/queue/openai/gpt-image-2` 上生成**另一个模型**，不报错、不告警 —— 比"少一格"更难发现）。
+    实测七牛 2026-09-14：把 `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 插到 `gpt-image-2` 之前即可，
+    `probe-panel.mjs --models …` 逐个模型名打印「模型→档案」对照可一眼验证；
+    加小数版本号的同族模型（`x-2` → `x-2.5`、`v1` → `v1.5`）**一律先查这条**。
 - 只声明手册明确写了的能力和参数；手册没写的宁可留 `missing`，要兜底就单独建一条 Profile，方便一键删除。
 
 ## 五、素材交付模式（`assets`）：最容易写错的地方
