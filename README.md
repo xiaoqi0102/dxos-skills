@@ -13,6 +13,10 @@ DX OS 的模型接入靠两份声明式 JSON（`schemaVersion: "dx-protocol/v2"`
 ## 快速开始
 
 ```bash
+# 0. 获取代码
+git clone https://github.com/xiaoqi0102/dxos-skills.git
+cd dxos-skills
+
 # 1. 把 bin/ references/ SKILL.md 放进 DX OS 技能目录
 mkdir -p ~/.workbuddy/skills/dxos-protocol-authoring
 cp -r bin references SKILL.md ~/.workbuddy/skills/dxos-protocol-authoring/
