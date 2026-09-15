@@ -675,6 +675,46 @@ DX OS 把每次协议任务的**真实请求体 + 编译后的执行计划**存�
 ⚠️ **必须把 `db` + `-wal` + `-shm` 三个文件一起复制出来再打开**。这个库是 WAL 模式且 WAL 可达 20 MB，**最新几十条任务全在 WAL 里**：
 `?immutable=1`（或只复制 `.db`）会跳过 WAL，读到的是**过期快照**——症状是"数据库里查不到刚才那条报错"，很容易误判成"任务没入库"。
 
+### 素材链接是不是死链（大雄图床 / `publicMediaService: "dxos"`）
+
+「上游说没收到参考素材 / 生成结果不遵循参考图」时，**先证明素材链接本身是活的**，再谈协议。
+画布把输入卡片的素材来源切成「公网 URL」时，DX OS 走**大雄图床**上传，卡片 `params.publicMediaLinks` 里留下的是：
+
+```text
+https://api.dx-os.com/v1/media/temp/<uuid>/<uuid>/<uuid>/<原文件名>
+```
+
+链路事实（`server/cloudAccount.ts` 的 `uploadCloudTemporaryMedia()`，0.3.7）：
+
+| 项 | 值 |
+| --- | --- |
+| 上传 | `POST ${apiBaseUrl()}/v1/media/temp`，`Authorization: Bearer <DX OS 在线账号 token>` |
+| 前置条件 | `cloud_installation_binding.status === 'active'`（未登录报「请先在系统设置 → 系统信息 登录 DX OS 在线账号」） |
+| 限制 | 单文件 ≤ 50 MB；仅 `image/*` `video/*` `audio/*` |
+| 下载 | **公网匿名可 GET**（实测 200 + 正确 `Content-Type`，无鉴权）→ 第三方上游能直接拉 |
+| 客户端记的 `expiresAt` | 上传时刻 **+24h** |
+| 对象不存在时 | `404 {"error":"not_found","message":"API endpoint not found"}` ← **这句是"对象/路径不存在"，不是"没权限"** |
+
+**判据（一条命令定性）**：
+
+```bash
+curl -s -o /dev/null -w 'HTTP=%{http_code} type=%{content_type} size=%{size_download}\n' -L "<素材URL>"
+# 200 + image/png → 链接是活的，问题在上游或协议
+# 404（json）    → 对象在服务端已不存在 → 上游必然拉不到素材，**这不是协议能修的**
+```
+
+**取真实 URL 的办法**（画布库里深搜，别只看卡片顶层）：
+
+```python
+# ccs.db → canvases.document_json 深搜 key == "publicMediaLinks"
+# 每项 { service: "dxos", url, expiresAt, sha256, updatedAt }
+```
+
+⚠️ 两个反直觉点：
+- 同域名的**老链接 200、新链接 404** 是可以同时出现的（实测 09-14 上传的仍 200，09-15 的已 404）——
+  所以「域名通不通」不能当判据，**必须逐条测**；
+- `expiresAt` 是**客户端按 +24h 算的**，不代表服务端真的保留 24h。别拿它反推"链接应该还有效"。
+
 ### 先分清：任务**根本没入库** vs 入库后失败
 
 如果 P 库里查不到那条失败任务，先看它死在哪个阶段 —— 路由阶段的拒绝**不会**建协议任务：
@@ -684,6 +724,35 @@ DX OS 把每次协议任务的**真实请求体 + 编译后的执行计划**存�
 | `xxx Surface 只允许已精确启用的声明式协议，当前不可执行：unsupported_local_input` | **素材规则接不住本地素材**（见 5.1）。`protocolAsset()` 判 null → 路由回落 legacy → 画布 409 | `assets.<kind>.mode` 改 `data_url`，body 读 `{{inputs.<kind>[*].dataUrl}}` |
 | 同一句但 reason = `protocol_v2_missing` / `model_profile_missing` | 协议没装、模型没绑协议、或 `match` 写错匹配不到档案 | 检查仓库版本、站点 `models[].protocol`、档案 `match` |
 | 报错里带 `<capture:xxx>` | 轮询/下载步骤的 path 占位符没对应上 `response` 捕获键 | 对齐 capture 键名 |
+
+### 判定「这次请求到底是不是本机发的」
+
+用户拿着一张上游后台的截图来问、你在本机库里却查不到时，先用**三处交叉**定性（实测口径）：
+
+| 信号 | 怎么查 | 本机跑过的样子 |
+| --- | --- | --- |
+| 协议任务 | `protocol-tasks.db` → `max(created_at)` | 时间贴近截图 |
+| 画布写入 | `ccs.db` 带时间戳的表当天行数 + `canvases.max(updated_at)` | 有当天记录 |
+| 服务日志 | `data/logs/api.log` / `worker.log` | 除 `listening on …` 外还有任务相关行 |
+
+**三者都停在更早的时间 = 这次提交不是本机发的**（另一台机器 / 另一个 DX OS 安装 / 非协议路径）。
+此时**不要在本机改协议** —— 先把这一条讲清楚，否则改的是另一台的协议。
+开工先 `ls -d /*/DXOS* /*/*/DXOS*` 确认机器上有几个 DX OS 安装，别默认只有你以为的那一个。
+
+### 上游后台的「参考素材」三行同内容 ≠ DX OS 发错了
+
+上游（new-api 系中转站）后台的请求明细会把素材按**它自己的归一化池**铺成「图片参考 / 视频参考 / 音频参考」多行。
+看到「图片参考 == 视频参考」这种**逐字符相同**的形态，**先别改协议**，用一次真机编译定性：
+
+```bash
+MSYS_NO_PATHCONV=1 "$N" --experimental-transform-types "$S/inspect-request-body.mjs" \
+  "<provider.json>" "<model.json>" "<fixture.json>" --model <上游模型名>
+```
+
+实测（2026-09-15，aicost）：3 图 + 1 视频 → `images` 只有 3 条、`videos` 只有 1 条、`audios` 不下发；
+同站 09-14 真实落库的 `plan_json.steps[submit].request.body` 也是 `{"images":[2条]}`、无 `videos/audios`。
+→ **协议的 `{{inputs.<kind>[*].url}}` 三路各自取数，不可能互相污染**。三行同内容属上游展示/归一化层面，
+要定死只有两条路：拿到上游后台的**原始请求体**，或在 DX OS 重跑同一任务后读 `plan_json` 比对。
 
 **「兼容模式」不是解法**：它只是把同一份协议交给更老的执行器重跑一遍。
 真正该做的是让规则能接住 `dataUrl`（`probe-local-input.mjs` 能直接验证这一点）。
