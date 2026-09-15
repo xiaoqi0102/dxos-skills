@@ -253,8 +253,61 @@ video.text_to_video / video_to_video / audio_reference → submit.video
 ⚠️ 三个配套点：
 
 1. 想让画布的「首尾帧」开关可用，`video.first_last_frame` 必须**同时**出现在四处：协议级 `capabilities`、档案 `capabilities`、协议级 `workflows`、档案 `workflows`。缺任一处会报「模型协议没有匹配 video.first_last_frame 的 workflow」。
+   **`video.multimodal`（画布「智能多参」）同样要四处齐全，而且是最容易漏的一个** —— 详见 §5.2.3。
 2. 画布的「智能多参 / 首尾帧」开关（`video_reference_mode`）会被 `index.ts:3127` 从转发参数里**删掉**，协议看不到它 —— 别指望用它做判断。
 3. **别一刀切**：上游文档示例若本来就是裸 URL（如 aicost `seedance.md` §4.2「图片参考生成视频」的示例即 `"images": ["…/reference-1.jpg"]`，首尾帧走 MiniMax H3 专属的 `start_frame`/`end_frame`），就**不要**加 `type`。判断依据只有上游文档，不是"别的站加了我也加"。
+
+#### 5.2.3 ⚠️ 漏掉 `video.multimodal` = 用户一混挂素材就报错（2026-09-15 实测）
+
+**症状**：画布「API 生成」挂上**跨类型**素材后点运行，红字
+**「模型协议 [xxx] 没有匹配 video.multimodal 的 workflow」**，请求一步都没发出去。
+
+**触发条件是「跨类型混挂」**，不是"挂得多"。canvas bundle 的 intent 推断（`index.video.intent()`）：
+
+```js
+// r=图数 d=视频数 c=音频数
+r >= 2 && video_reference_mode === "first_last" && !d && !c ? "video.first_last_frame"
+: r>0 && (d>0||c>0) || d>0 && c>0 ? "video.multimodal"      // ← 图+视频 / 图+音频 / 视频+音频
+: r>1 ? "video.multi_reference"
+: r===1 ? "video.image_to_video" ...
+```
+
+即：**只要同时挂了两种不同类型的素材，就必定走 `video.multimodal`**，
+跟「智能多参/首尾帧」开关、跟素材张数都无关（2 图 + 1 视频 ≠ multi_reference，而是 multimodal）。
+
+**为什么一定会撞上**：站点里视频模型的 `caps` 通常只写粗粒度 `["video"]`，
+而 `modelDescriptor.ts:128` 会把 `video` 展开成**含 `video.multimodal` 在内**的全部 `video.*` 能力
+→ 画布据此**允许**用户混挂素材，于是这个 intent 100% 会被请求到；
+协议侧却只有 `multi_reference` / `video_to_video` / `audio_reference` 这些"单一类型"能力 → 必然编译失败。
+
+**修法**（四处齐全，workflow 复用裸 URL 的 submit operation）：
+
+```jsonc
+"capabilities": [ …, "video.multimodal" ],                     // ① 协议级
+"workflows":    { "video.multimodal": { "submit": "submit.video", "poll": {…}, "result": {…}, "uploads": [] } },  // ② 协议级（复制 multi_reference 那份改 id 即可）
+"modelProfiles": { "xxx-video": {
+  "capabilities": [ …, "video.multimodal" ],                   // ③ 档案级
+  "workflows":    { … , "video.multimodal": "video.multimodal" } // ④ 档案级
+} }
+```
+
+⚠️ **`video.multimodal` 必须用「裸 URL 参考图」的 operation**，不能复刻 `first_frame` 那份：
+画布给 multimodal 里的图片下发的是 `role = reference_image`（`video.multimodal` 分支），
+而上游 `type` 枚举（如佳速 `first_frame|end_frame|last_frame`）**不含 `reference_image`** ——
+照 `first_frame` 那份写会把 `type:"reference_image"` 原样发给上游。用裸 `{{inputs.images[*].url}}` 正好 = 参考图语义。
+
+**自查命令**（`audit-semantics.mjs` 查不到这个 —— 它只知道"声明了的能力要有 workflow"，
+无法预知画布会来要一个没声明的能力，所以必须手动点这个 intent）：
+
+```bash
+# 缺 video.multimodal 时，这里会整屏 ERR「模型协议「xxx」没有匹配 video.multimodal 的 workflow」
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/verify-protocol.mjs" \
+  "<provider.json>" "<model.json>" --intent video.multimodal
+```
+
+**排查顺序**：先跑上面这条；通过后再用 ⑧ `inspect-request-body.mjs` 拿一份「2 图 + 1 视频 (+1 音频)」
+的 fixture 编译出真实 body，核对 images 是**裸 URL 数组**、videos/audios 一并下发、prompt 里 `@图片N/@视频N`
+与素材顺序对齐。同一平台的多个站点都要过一遍（实测漏这一个 intent 的站点不止一家）。
 
 #### 5.2.1 ⚠️ 「结果没遵循参考图」不等于 type 写错 —— 先分清两种归因
 
