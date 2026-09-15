@@ -309,6 +309,62 @@ MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/verify-pro
 的 fixture 编译出真实 body，核对 images 是**裸 URL 数组**、videos/audios 一并下发、prompt 里 `@图片N/@视频N`
 与素材顺序对齐。同一平台的多个站点都要过一遍（实测漏这一个 intent 的站点不止一家）。
 
+#### 5.2.4 模板技巧：`metadata.payload` 是「字符串内嵌 JSON」时，怎么拼多个可选数组
+
+有些上游（**SdAS API `sudashuiapi`** 实测）要求素材放**字符串**里，且**明确不接受对象**：
+`metadata.payload = "{\"aspectRatio\":\"16:9\",\"mode\":\"references\",\"imageUrls\":[...],\"videoUrls\":[...],\"audioUrls\":[...]}"`。
+它的多参形态（图+视频/图+音频/视频+音频）要求**同一字符串里放多个"挂几个发几个"的数组**。
+
+**先记住引擎的两条限制**（都来自 `compiler.ts`，不是猜的）：
+- 字符串插值里 `{{inputs.images[*].url}}` 渲染成 `String(array)` → **`a,b`，没有引号**，拼不出合法 JSON 数组；
+- `$cardinality` 的 `items` **只有最内层**能拿到 —— 嵌套时 `locals.items` 被逐层覆盖（`$map` 只覆盖 `item`，不覆盖 `items`），
+  所以**一个字符串叶子最多只能引用一个数组**；
+- `$map` 的 template 可以是 `"\"{{item.url}}\""` —— 元素**自带引号**，这样 `{{items}}` 插值出来才是合法的 `"u1","u2"`（既有协议就靠这个）。
+
+**可行解**：把"每个素材类型一段 keyed 片段"做成**字面量数组**，用 `$keyValue` 空键在空组时返回 `UNDEFINED`
+（数组渲染会 `filter(UNDEFINED)` 把它剔掉），再由外层 `$cardinality` 的 `{{items}}` 逗号连接成整串：
+
+```jsonc
+"payload": {
+  "$cardinality": {
+    "from": [
+      { "$cardinality": {                                  // 图片片段
+        "from": { "$map": { "from": "{{inputs.images}}", "template": "\"{{item.url}}\"" } },
+        "zero": { "$keyValue": { "key": "", "value": "" } },   // ← 空键 → UNDEFINED → 该片段消失
+        "one":  "\"imageUrls\":[{{items}}]",
+        "many": "\"imageUrls\":[{{items}}]"
+      } },
+      { "$cardinality": { /* 同上，key 换 videoUrls / 组换 videos */ } },
+      { "$cardinality": { /* 同上，key 换 audioUrls / 组换 audios */ } }
+    ],
+    "zero": "{\"aspectRatio\":\"{{derived.ratio}}\",\"mode\":\"references\"}",
+    "one":  "{\"aspectRatio\":\"{{derived.ratio}}\",\"mode\":\"references\",{{items}}}",
+    "many": "{\"aspectRatio\":\"{{derived.ratio}}\",\"mode\":\"references\",{{items}}}"
+  }
+}
+```
+
+实测输出（任意张数、未挂的类型键整个消失）：
+
+```text
+2图+1视频        → {"aspectRatio":"16:9","mode":"references","imageUrls":["a","b"],"videoUrls":["r"]}
+1图+1音频        → {"aspectRatio":"9:16","mode":"references","imageUrls":["a"],"audioUrls":["v"]}
+3图+2视频+2音频  → …"imageUrls":["a","b","c"],"videoUrls":["r1","r2"],"audioUrls":["v1","v2"]}
+```
+
+**为什么不用别的写法**（都是踩过的死路，别再试）：
+| 想法 | 为什么不行 |
+| --- | --- |
+| `payload` 直接给对象（`$merge`+`$keyValue`） | 上游明确「不能直接传 JSON 对象」，会 400 |
+| 逐层嵌套 `$cardinality`（图→视频→音频） | `items` 被最内层覆盖，外层数组的 URL 拿不到 → 只能发出一个键 |
+| 用 `{{inputs.videos[*].url}}` 补别的键 | 渲染成无引号的 `u1,u2`，不是合法 JSON 数组 |
+| `$map` 每元素带 key（`"imageUrls":["u1"],"imageUrls":["u2"]`） | 重复键，解析只留最后一个 → 静默丢素材 |
+| 固定槽位 `{{inputs.videos[0].url}}`、`{{inputs.videos[1].url}}` | 张数不定：少了出现 `""` 空串元素，多了直接丢 |
+| 指望 `derive` 拼字符串 | 表达式只有标量算子（coalesce/lookup/upper/clamp…），**没有字符串拼接** |
+
+⚠️ `$keyValue` 空键返回 `UNDEFINED` 是**模板层唯一的"条件分支"手段**（第六章那套 `size`/`auto` 开关同理），
+本技巧把它用在了"数组元素级剔除"上。
+
 #### 5.2.1 ⚠️ 「结果没遵循参考图」不等于 type 写错 —— 先分清两种归因
 
 `type` 语义只是**其中一条**成因，**别一看到这四个字就改 `type`**。先做「同一症状 → 成因」判别：
