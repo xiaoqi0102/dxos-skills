@@ -1128,3 +1128,47 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()          # 只该有 2
 | 素材交付模式分支 | `ai-tasks/declarativeRouter.ts`、`ai-tasks/assetResolvers.ts` |
 | **内置协议范例（写之前一定先看）** | `protocol-engine/builtins.ts` |
 | 界面工具条逐格渲染逻辑 | `data/developer-apps/.versions/canvas/<ver>/source/assets/index-*.js` |
+
+## 十一、把 DX OS 内置协议「完整提取」成 JSON（2026-09-16 实测）
+
+要复用/研究内置协议时，**不要手抄 `builtins.ts`** —— 直接 import 引擎自己的模块取值，
+里面那些 helper 函数（`bearerProvider()` / `openAiMultipartImageFields()` / 各种 `$` 表达式常量）在源码里已经求值，导出即运行时那一份：
+
+```js
+// node --experimental-transform-types extract.mjs
+import fs from 'node:fs'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+const { resolveEngineDir } = await import(pathToFileURL('<SKILL>/bin/dxos-paths.mjs').href)
+const mod = await import(pathToFileURL(path.join(resolveEngineDir(), 'builtins.ts')).href)
+
+const provider = mod.getBuiltinProtocolV2('provider', 'openai-relay')
+const model = mod.getBuiltinProtocolV2('model', 'openai-images')
+fs.writeFileSync('openai-relay.provider.json', JSON.stringify(provider, null, 2) + '\n', 'utf8')
+fs.writeFileSync('openai-images.model.json', JSON.stringify(model, null, 2) + '\n', 'utf8')
+```
+
+- 列全部内置：`mod.listBuiltinProtocolsV2()`；原始数组：`mod.BUILTIN_PROVIDER_PROTOCOLS_V2` / `mod.BUILTIN_MODEL_PROTOCOLS_V2`。
+- ⚠️ **静态 `import ... from 'C:/…'` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`**，必须用 `pathToFileURL(...).href` 动态导入。
+- 旧版（v1）对应定义在 `server/protocols.ts`：`PROVIDER_PROTOCOLS[...]` / `PROTOCOLS[...]`（同法 import 取值）。
+
+**界面中文名 ≠ 协议里的 label**：UI 显示名来自前端 bundle 的映射表
+（`dist/assets/ApiSettings-*.js` 里的 `provider:xxx` / `model:xxx` 字典，搜界面名就能反查 id）：
+
+| 界面显示名 | 真实 id | 定义位置 |
+| --- | --- | --- |
+| OpenAI 中转平台 | provider `openai-relay` | `builtins.ts:2142+`（v2）、`protocols.ts:2790`（v1） |
+| OpenAI 统一能力协议 | model `openai-images` | `builtins.ts:85-270`（其 label 是英文 `OpenAI Unified`） |
+
+⚠️ **内置协议 provider id ≠ model id**（`openai-relay` vs `openai-images`）本身没问题；
+但**把这两份当"自定义协议"导入 DX OS 时必须把 id 统一**，否则静默不绑定（见第三节）。
+
+`openai-images` 当前内容（runtime 0.3.8）：12 capabilities / 14 operations / 11 workflows / 8 modelProfiles / 5 uiSchemas。
+视频链路是 `POST /v1/videos`（**multipart + `input_reference`**，OpenAI 官方 Sora 风格字段）→ 5 秒轮询
+（backoff 1.25、上限 30 分钟）→ `GET /v1/videos/{id}/content`。
+**它不是 aicost 那种 JSON `images` 写法**，别拿它当 aicost 中转的参考实现。
+
+**导出后必跑**：`verify-protocol.mjs` 全 intent 扫一遍。实测 182 组里只有 1 组失败
+（`audio.tts`）—— 那是探针把**协议 id 当模型名**喂进去导致匹配不到档案；
+用 `--intent audio.tts --model-id gpt-4o-mini-tts` 定向复跑即 0 失败，**不是协议问题**。
+
