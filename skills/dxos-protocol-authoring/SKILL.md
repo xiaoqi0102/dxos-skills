@@ -101,6 +101,38 @@ Profile 用 `"uiSchemas": ["my-params"]` 按 id 引用。字段键是 **`key`**�
 ⚠️ 写成 `{ "duration": {...} }` 这种「字段名字典」→ 不是数组 → `resolveParameterSchema` 返回 null →
 **参数面板一格都不显示**（但覆盖率仍全绿）。源码另有一个未见于文档的字段：`showWhen: { models: ["xxx"] }` 可按模型控制某格显隐。
 
+#### 4.1.1 ⚠️ `limits.<key>.options` 会**覆盖** uiSchemas 的 `options`，中文 label 被静默丢弃（2026-09-16 实测）
+
+**症状**：下拉框里显示的是**原始 value**（`DEFAULT` / `LIGHT` / `OFF`），而不是你写在 uiSchemas 里的中文 label。
+字段存在、能选、能提交、四关全绿 —— **只有肉眼看得见**。
+
+**根因**（`protocolManifest.ts` 的 `applyLimitsToFields()`，实测行号）：
+
+```ts
+const options = limitOptions(rule)          // rule = limits[key]，读 options 或 values
+if (options.length) next.options = options.map((value) =>
+  typeof value === 'object' && value ? value : { label: String(value).toUpperCase(), value })
+else if (Array.isArray(next.options) && (rule.min != null || rule.max != null)) { ... }
+```
+
+| `limits.<key>.options` 形态 | 结果 |
+| --- | --- |
+| 纯字符串数组（如 `["default","off"]`，**本仓既有风格**） | label 被强制成**值的大写**，uiSchemas 的 label **静默丢弃** |
+| 对象数组（`[{label, value}]`） | 原样透传，label 有效 |
+| **不给这个 key** | uiSchemas 的 `{label, value}` 被保留 ✅ |
+
+**结论**：枚举值本身**可读**的（`720p` / `16:9` / `1080p`）→ 照旧写 `limits` 纯字符串，显示大写反而更清楚；
+枚举值**不可读**的（`default` / `off` / `light` / `heavy`、任何内部码）→ **别在 `limits` 里给同一个 key 写 `options`**，
+让 uiSchemas 的 label 生效。
+
+**取证命令**（`probe-panel.mjs` 只判「格子有没有」，抓不到这一类，必须用专门的工具）：
+
+```bash
+node --experimental-transform-types bin/inspect-panel-options.mjs <model.json> <provider.json> --only <key>
+# 会打印运行时真正交给画布的字段（label/options/default），并对「label == value 大写 且 limits 是纯字符串」直接报警
+```
+
+
 ### 4.2 界面上每一格是「单独判存在性」，少一个字段就少一格
 
 画布视频节点的工具条按固定顺序渲染：`[模式按钮] [生成音频] [时长] [画面比例] [分辨率] [更多参数]`，
@@ -629,6 +661,10 @@ MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-rati
 # ⑦ 参数面板逐格核对（改了 modelProfiles.match / uiSchemas 必跑；专抓「界面上少格子」）
 MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-panel.mjs" \
   "<model.json>" "<provider.json>" [--models a,b,c]
+
+# ⑧ 面板字段解析取证（写了 label / options / limits 必跑；专抓「格子在了但选项标签是错的」）
+MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/inspect-panel-options.mjs" \
+  "<model.json>" "<provider.json>" [--model <名>] [--intent <cap>] [--only <key>]
 ```
 ③ 单文件模式打印 `<hash>  <kind>/<id>  <路径>`；`--verify-store` 模式逐条核对仓库里每个版本的 hash，并检查 `activeVersion` 是否存在，**有对不上的版本时 exit 1**（那些版本会被 DX OS 静默丢弃）。
 
@@ -721,6 +757,17 @@ MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/probe-pane
 但档案 `match` 只写了 `seedance-2.5-101010` / `seedance-2.5` / `kling`，
 于是选 `seedance-2.0-933` 时**时长/比例/分辨率全都不显示**（也不报错）。
 修法：把站点里真实存在的模型名前缀补进 `match`。跑 ⑦ 前后对照即可看到 `[档案未命中]` → `[ok]`。
+
+⑧ `inspect-panel-options.mjs` 是 ⑦ 的**补位**：⑦ 只回答「这一格的 key 在不在」，⑧ 回答「这一格最终长什么样」
+（打印 `resolveParameterSchema()` 交给画布的每个字段的 `label` / `options` / `default` / `type`）。
+专抓 ④/⑦ 都拦不住的一类：**格子在了、能选、能提交，但下拉里显示的是原始 value 而不是你写的 label**
+—— 根因是 `limits.<key>.options` 覆盖了 uiSchemas 的 `options`（机制与判据见 §4.1.1）。
+自动报警条件：`label === String(value).toUpperCase()` 且 `limits.<key>.options` 是纯字符串数组。
+
+真实案例（2026-09-16，佳速新增 `face` 字段）：uiSchemas 里写了四个中文 label，
+但 `limits.face.options` 同时给了 `["default","off","light","heavy"]` → 面板显示 `DEFAULT` / `OFF` / `LIGHT` / `HEAVY`，
+中文 label 全部丢掉。四关（schema / 编译 / 断⾔ / 语义体检 / 面板逐格）**全绿**，只有截图能看出来。
+修法：删掉 `limits.face`（让 uiSchemas 的 label 生效）。跑 ⑧ 前后对照：`1 个的 label 被 limits.options 覆盖` → `未发现`。
 
 顺带：`generate_audio=无` 只有在**上游确实没有这个参数**时才是对的（佳速的 `/v1/video/generations` 没有该字段，
 就**不要**为了补格子而瞎加 `uiSchemas` 字段——加了又不进 `bodyTemplate`，等于给用户一个假开关）。

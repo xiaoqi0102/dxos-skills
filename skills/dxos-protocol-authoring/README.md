@@ -1279,6 +1279,31 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()                # 只�
 > ⚠️ **教训**：今后在 `~/.workbuddy/skills/` 下建备份目录时，**不要保留原样的 `name:` frontmatter**（要么改名，
 > 要么把备份挪出 `skills/` 目录），否则点号前缀会让它**静默顶替现役技能**，而唯一的症状是"技能内容变旧了"。
 
+#### 追加⑦ 补记：`limits.<key>.options` 覆盖 uiSchemas 的 label（用户截图发现，同日）
+
+用户在画布「更多参数」里看到「人脸处理」显示的是 `DEFAULT`（而非中文 label）后追问，据此反查
+`protocolManifest.ts` 的 `applyLimitsToFields()`（实测 124-125 行）：
+
+```ts
+const options = limitOptions(rule)          // rule = limits[key]
+if (options.length) next.options = options.map((value) =>
+  typeof value === 'object' && value ? value : { label: String(value).toUpperCase(), value })
+```
+
+即 **`limits.<key>.options` 存在时整体替换 uiSchemas 的 `options`**，纯字符串被转成 `{label: 值大写, value}`。
+
+| 项 | 内容 |
+| --- | --- |
+| 症状 | 下拉显示 `DEFAULT` / `OFF` / `LIGHT` / `HEAVY`（原始 value 大写），uiSchemas 的四个中文 label 静默丢弃 |
+| 为什么四关全绿 | schema / 编译 / 取值断言 / 语义体检 与 ⑦ 面板逐格探针**都只判「key 在不在」，不判「options / label 对不对」** |
+| 取证方式 | 直接 import 运行时 `resolveParameterSchema()` 打印字段 → 已固化为 `bin/inspect-panel-options.mjs`（第七节 ⑧） |
+| 修法 | 删掉 `limits.face`（枚举值不可读时**不要**给同一个 key 写 `limits.options`）；label 精简为「不传（服务端默认）/ 原图（不处理）/ 轻（磨皮+提亮）/ 重（彩铅/素描）」 |
+| 改后复核 | ① **350 组 0 失败**；③ 佳速条目仍 7 条；⑦ 5 模型全为 `更多参数=[face]`；⑧ 从「1 个 label 被覆盖」→「未发现」；取证 9 组不变 |
+| 三版 hash | 加 face 结构 `ebb98698…` → 补 summary `e3ce6eb4…` → 修 label **`71c81bfb56373cd987c5d19739b909c1047c589dda94cd7f6517eb982fe7f31d`** |
+
+> **判据**：枚举值本身可读（`720p` / `16:9` / `1080p`）→ 照旧写 `limits` 纯字符串（显示大写更清楚）；
+> 枚举值不可读（`default` / `off` / `light` / `heavy` 这类内部码）→ **只写 uiSchemas，别给 `limits` 同 key 写 `options`**。
+
 ---
 
 
