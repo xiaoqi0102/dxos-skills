@@ -1159,6 +1159,28 @@ fs.writeFileSync('openai-images.model.json', JSON.stringify(model, null, 2) + '\
 | --- | --- | --- |
 | OpenAI 中转平台 | provider `openai-relay` | `builtins.ts:2142+`（v2）、`protocols.ts:2790`（v1） |
 | OpenAI 统一能力协议 | model `openai-images` | `builtins.ts:85-270`（其 label 是英文 `OpenAI Unified`） |
+| OpenAI 兼容平台 | provider `openai-http` | `builtins.ts:2149`（`bearerProvider('openai-http','OpenAI Compatible')`，label 是英文） |
+| OpenAI 兼容图片与视频 | model `comfly-openai` | `builtins.ts:343-482`（label `OpenAI 兼容媒体`） |
+
+**平台协议 ↔ 模型协议的"直接对应"关系由 `protocol-engine/bindings.ts` 决定**（不是靠名字猜）：
+
+| 兼容映射 | 内容 |
+| --- | --- |
+| `PROVIDER_V2_COMPATIBILITY` | 老平台 id → v2：`openai`/`megabyai` → `openai-http`、`xai`→`xai-http`、`gemini`→`gemini-http` … |
+| `MODEL_V2_COMPATIBILITY` | 老/平台 id → v2 模型协议：`openai`/`openai-chat`/`openai-image`/`openai-audio` → **`openai-images`**；**`openai-relay` → `comfly-openai`**；`gemini-generations` → `comfly-openai` |
+| 运行时追加（`ai-tasks/declarativeRouter.ts:95`） | 平台是 `openai-http` 且 intent 以 `image.`/`video.` 开头时，候选里**追加 `comfly-openai`** |
+| 约束（`declarativeRouter.ts:38-47`） | `provider.protocol === 'openai-relay'` 时，除自定义协议与 `{openai-relay, comfly-openai, openai-chat-media, gemini-generations}` 外，其它模型协议一律被改写成 `openai-relay` —— **中转站平台协议定义线路契约，不能被"官方端点"式模型协议顶掉** |
+
+两套 OpenAI 系模型协议的分工（选错就是"参考图发不出去"的根源）：
+
+| | `openai-images`（OpenAI 统一能力协议） | `comfly-openai`（OpenAI 兼容图片与视频） |
+| --- | --- | --- |
+| 编辑/参考图 | `POST /v1/images/edits`（**multipart**）、视频 `POST /v1/videos`（**multipart + `input_reference`**） | 图片编辑也走 `POST /v1/images/generations`（**JSON + `image` 数组**）；视频 `POST /v2/videos/generations`（JSON，404/405 时降级 `/v1/videos/generations`） |
+| 视频字段 | `model/prompt/seconds/size/input_reference` | `model/prompt/images/videos/audios/duration/aspect_ratio/resolution/size` |
+| 素材形态 | 走上传/二进制（`result.source: binary`） | **data_url 内联**（图 ≤50MB×16、视频 ≤500MB×3、音频 ≤100MB×3） |
+| 轮询 | 5s 起、backoff 1.25、上限 10s、30 min | 2s 起、backoff 2、上限 8s、30 min，结果取 `resultUrl` |
+| 档案 | 8 个按模型名匹配的档案 | 只有 1 个兜底档案（`match: [""]`） |
+
 
 ⚠️ **内置协议 provider id ≠ model id**（`openai-relay` vs `openai-images`）本身没问题；
 但**把这两份当"自定义协议"导入 DX OS 时必须把 id 统一**，否则静默不绑定（见第三节）。
