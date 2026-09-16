@@ -1263,9 +1263,21 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()                # 只�
 判定字段是否存在，优先级：① 上游官方插件源码/首页公告 → ② 上游在线文档 → ③ 本机快照 md。
 已写进 SKILL.md §二 步骤 0 与 §十「视频档案」注。
 
-**附带发现（待用户处置）**：`~/.workbuddy/skills/` 下同时存在 `dxos-protocol-authoring/`（现役，SKILL.md 1021 行）
-与 `.backup-dxos-20260914-093549/`（旧备份，SKILL.md 约 810 行），而**技能注册表指向的是后者** ——
-即模型加载技能时会读到旧版。本轮已按「仓库为发布源」把仓库版覆盖回现役目录（两者逐字节一致）。
+**附带发现（已解决）**：`~/.workbuddy/skills/` 下曾同时存在 `dxos-protocol-authoring/`（现役）
+与 `.backup-dxos-20260914-093549/`（2026-09-14 升级前的旧备份）。**症状**：模型加载技能时读到的是**旧备份**。
+
+**根因**（2026-09-16 查明）：两份 `SKILL.md` 的 frontmatter 都写 `name: dxos-protocol-authoring`，
+而技能扫描按**目录名排序、同名后者被顶掉** —— `.backup-…` 的点号（0x2E）排在 `d` 之前，于是**旧备份先注册、把现役的顶掉了**。
+`~/.workbuddy/workbuddy.db` 里**没有** skills 表（只有 sessions / workspaces / automations），
+说明**没有持久化注册表**，索引是每次会话扫描生成的 —— 所以**删掉目录即修复**，不需要改任何配置。
+
+**处置**：按用户要求删除该备份目录（走回收站，可还原）。删除前逐文件比对确认它是现役目录的**严格子集**
+（`README.md`、`dxos-paths.mjs`、`inspect-request-body.mjs`、`probe-panel.mjs`、`request-fixture.example.json`
+只存在于现役侧；其余差异均为旧版文本）。删后复核：现役目录与仓库**逐字节一致**、9 个脚本 + 3 个参考文件齐全、
+`protocol-hash.mjs` 冒烟通过。
+
+> ⚠️ **教训**：今后在 `~/.workbuddy/skills/` 下建备份目录时，**不要保留原样的 `name:` frontmatter**（要么改名，
+> 要么把备份挪出 `skills/` 目录），否则点号前缀会让它**静默顶替现役技能**，而唯一的症状是"技能内容变旧了"。
 
 ---
 
