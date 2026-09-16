@@ -1230,6 +1230,43 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()                # 只�
 | ① 陷阱④：必须 `--experimental-transform-types` | 漏了抛 `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`（要 import 引擎 `.ts`）。本次首轮即踩到，SKILL.md 示例本身写对了，是调用时漏加 |
 | 发布整包 | 仓库内 `skills/dxos-protocol-authoring/` 与本地技能目录**逐字节一致**，无历史机器名残留 |
 
+### 2026-09-16 追加⑦：佳速 `face`（人脸处理）字段接回 —— 同时纠正一次「快照误判」
+
+**背景**：用户问「佳速这个 `face` 参数（是否开启人脸处理）有没有？」。**首答错了** —— 只查了本机快照
+`佳速api文档/佳速api开发文档.md`（2026-09-13 抓取，`grep -i face` **0 匹配**）就答「没有」。
+
+**权威来源（用户随后贴出文档截图，据此反查）**：佳速首页 `https://ai.jiasuapi.com/` 公告里挂的
+**官方 new-api 插件源** `github.com/hyc0122/jiasuapi-newapi-plugins`（README 2026-09-14，v1.0.2）：
+
+| 项 | 内容 |
+| --- | --- |
+| 文档口径 | 视频参数映射「可选」表末行：`face` → `face`，`{"enabled":true,"mode":"light"}`（或 `heavy`），或 `{"enabled":false}`；**省略则走服务端默认处理** |
+| 源码实证 | `plugins/tasks/jiasuapi/1.0.2/plugin.js`：`normalizeFace(req.face) \|\| normalizeFace(metadata.face)` → `buildVideoBody()` 里 `if (face) body.face = face` → `POST /v1/video/generations` |
+| 上游校验行为 | `enabled` → `Boolean()`；`mode` → trim + toLowerCase，**仅 `light`/`heavy` 收**，其余静默丢弃；结果为 `{}` 则不发送该字段 |
+| 作用范围 | **仅视频侧**（`buildVideoBody`）。图片走 `buildImageBody()` → `POST /v1/images/create`，**无 `face`** |
+| 佐证 | 佳速首页公告亦写「服务器已调整，**人脸审核通过率约 90%**，量大的工作室可根据工具调整上传参数」 |
+| ⚠️ 与追加⑤的关系 | ⑤ 删掉的 `jiasu-video` 的 `face` 字段是 `faceKey` **路由外壳（假开关）**，与上游这个真实的 `face` body 字段不是一回事 —— **那次移除本身没错**，本次是按上游真实语义**重新加回**，且不再套壳 |
+
+**改法**（协议落法见 SKILL.md §5.2.5）：
+
+| 项 | 内容 |
+| --- | --- |
+| 落点 | 3 个视频 submit（`submit.video` / `.first_frame` / `.first_last`）的 `bodyTemplate` 均由扁平对象改为 `$merge` + `$coalesce` + 3 个 `$keyValue`（`value` 直接给嵌套对象） |
+| 新 derive | `faceLightKey` / `faceHeavyKey` / `faceOffKey`（均为 `lookup(params.face)` → 命中给 `"face"`，否则 `fallback: ""`） |
+| UI | `jiasu-video` 加第 4 格 `face`（select，4 选项：服务端默认/不传 · 原图 · 轻 · 重），`defaults` 加 `face:"default"`，`limits.face` = `{options:[default,off,light,heavy],default:"default"}` |
+| **默认值特意选「服务端默认（不传）」** | 保持与改前行为完全一致，用户不主动选就不会改变既有出片效果 |
+| 备份 | `jiasu.model.json.bak-20260916-095802-preAddFace`；写库时另做 `custom-protocols-v2.json` 备份 |
+| 取证（`inspect-request-body.mjs`，9 组） | `default` / 缺省 / `"weird"` / `"LIGHT"` → **body 里无 `face`**（脏值安全侧兜底）；`off` → `{"enabled":false}`；`light` → `{"enabled":true,"mode":"light"}`；`heavy` → `{"enabled":true,"mode":"heavy"}`；first_frame / first_last 两类同样命中 |
+| 四关 | ① schema 通过 + **350 组编译 0 失败**；② **12615 项 0 越界**；③ 退出码 1 但**改前改后佳速条目同为 7 条**（对照成立，26 条全是既有 `public_url` 提示级）；④ 面板探针 **5 模型 × 7 intent 全部 `更多参数=[face]`**（改前为 `[]`，对照成立） |
+
+**本轮最大的教训**：**本机快照 md 落后于上游，且「grep 无匹配」只能证明「快照没写」**。
+判定字段是否存在，优先级：① 上游官方插件源码/首页公告 → ② 上游在线文档 → ③ 本机快照 md。
+已写进 SKILL.md §二 步骤 0 与 §十「视频档案」注。
+
+**附带发现（待用户处置）**：`~/.workbuddy/skills/` 下同时存在 `dxos-protocol-authoring/`（现役，SKILL.md 1021 行）
+与 `.backup-dxos-20260914-093549/`（旧备份，SKILL.md 约 810 行），而**技能注册表指向的是后者** ——
+即模型加载技能时会读到旧版。本轮已按「仓库为发布源」把仓库版覆盖回现役目录（两者逐字节一致）。
+
 ---
 
 

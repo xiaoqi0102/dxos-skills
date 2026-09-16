@@ -36,6 +36,12 @@ ls -d "<DXOS根目录>"/.dx-runtime/versions/runtime-* | sort | tail -1
 ## 二、作业流程
 
 0. **只读手册，先产出「接口事实表」**：鉴权方式、Base URL 有无 `/v1` 段、同步还是异步、提交/查询端点与方法、`Content-Type`、任务 ID 占位样貌、素材上传端点、**请求字段的准确名与别名（哪个真正生效）**、返回体键名（ID/状态/直链/错误）、模型清单（时长/比例/分辨率/素材上限/是否必须带图/是否出声）、支持的能力枚举、素材是公网 URL 还是需先上传。抄不到的标「手册未写」**并来问用户，不要用经验填空**。事实表先发用户确认，再写 JSON。
+
+   ⚠️ **「本机快照里 grep 不到」≠「上游没有」**（2026-09-16 实测翻车一次）：站点接入目录里的 `*.md`
+   多是一次性抓取的快照，**会落后于上游**。判定某字段是否存在，优先级是：
+   **① 上游官方插件源码 / 官方首页公告**（最新、且可执行）→ **② 上游在线文档** → **③ 本机快照 md**（最易过期）。
+   佳速的 `face` 字段就只存在于 ① 而 ③ 完全没有（详见 §十「视频档案」后的注）。
+   措辞也要区分：grep 无匹配只能得出「**本机快照没写**」，不能得出「上游没有」。
 1. 写两份 JSON（见第三、四、五节）。同一平台的不同能力（图片/视频/音频/LLM）**拆成多个模型协议**。
 2. 离线校验：`verify-protocol.mjs`（schema + 编译）+ `assert-param-guards.mjs`（取值白名单）+ `probe-local-input.mjs` / `probe-ratio.mjs` / `probe-panel.mjs`（按协议类型选跑，见第七节）。
 3. 退出 DX OS → 备份 → 写入 `custom-protocols-v2.json`（hash 必须对，见第八节）。
@@ -69,7 +75,7 @@ ls -d "<DXOS根目录>"/.dx-runtime/versions/runtime-* | sort | tail -1
 | `omitEmpty: true` | 逐层剥离 `undefined / null / '' / [] / {}` |
 | `params` 合并顺序 | `{...profile.defaults, ...task.params}` —— **任务侧参数覆盖 defaults**，所以 UI 传什么就是什么（这正是第六节串台 bug 的成因） |
 | 画布比例的取值 | 选「原图比例」时发的是 **GCD 约分后的具体比**（如 `1055:1491`，不是字面量 `source`）；分辨率一律**小写** `1k/2k/4k`。所以：①`lookup` 的 `cases` 只认字面量精确匹配，非枚举值要么给 `fallback`、要么原样透传（上游就近映射）；②分辨率若直接透传给枚举型上游 = **静默失效**（上游要大写 `2K`）。三种归宿与实测判据见第六节 |
-| 条件分支 | 引擎没有 `if`。模板层用 `$coalesce`（取第一个渲染后非空的结果）+ `$keyValue`（key 为空串时返回 `UNDEFINED`）组合成开关；`lookup` 的 `fallback` 不给值时返回 `undefined`，可让某个字段在请求里整个消失（如 `image_size` 缺省 → 上游用 auto） |
+| 条件分支 | 引擎没有 `if`。模板层用 `$coalesce`（取第一个渲染后非空的结果）+ `$keyValue`（key 为空串时返回 `UNDEFINED`）组合成开关；`lookup` 的 `fallback` 不给值时返回 `undefined`，可让某个字段在请求里整个消失（如 `image_size` 缺省 → 上游用 auto）。**整个「嵌套对象」字段的可选化写法（`$keyValue.value` 可直接给对象）+ compiler.ts 行号依据 + 对照测试，见 §5.2.5** |
 | 异步任务 | 建议 5 秒轮询 + 最长等待；`failed` 时优先读错误字段 |
 | **真实 apiKey 禁止入库** | provider 段的 `apiKey` 一律写占位符 `YOUR_API_KEY`；真实密钥填进 DX OS 界面或落在被忽略的 `*.local.json`。本仓库有 `.gitignore` + `hooks/pre-commit` + `scripts/scan-secrets.mjs` 三道防线。**已提交过的密钥视为已泄漏，必须吊销重签**。<br>跑 `scripts/scan-secrets.mjs` 时**必须先 `cd` 进仓库根** —— 它默认走 `git ls-files`，在仓库外执行会报 `fatal: not a git repository`（不是脚本坏了） |
 | **异步任务重试** | **只在 operation 上写 `retry` 才生效**（`compiler.ts:351` 把 `operation.retry` 拷进编译后的 request，`workflow.ts:237-256` 消费它）。不写 `retry.retryNetwork: true` 时 `totalAttempts` 默认 1 且网络错误**不重试** → **一次瞬时 `fetch failed` 就把已经提交成功的异步任务永久判死**。异步视频/图片必写；轮询 `poll` 也要配 `backoff`/`maxIntervalMs`/`maxDurationMs`（只写 `intervalMs` 时上限回落到默认 30 分钟） |
@@ -364,6 +370,54 @@ MSYS_NO_PATHCONV=1 "$DX_NODE" --experimental-transform-types "$DX_BIN/verify-pro
 
 ⚠️ `$keyValue` 空键返回 `UNDEFINED` 是**模板层唯一的"条件分支"手段**（第六章那套 `size`/`auto` 开关同理），
 本技巧把它用在了"数组元素级剔除"上。
+
+#### 5.2.5 可选「嵌套对象字段」：`$merge` + `$coalesce` + `$keyValue`（value 可为对象，2026-09-16 实测）
+
+**场景**：上游某字段本身是对象，且**整个字段可选**（省略 ≠ 传空值）。典型是佳速
+`face: {"enabled":…, "mode":"light"|"heavy"}` —— 省略 = 服务端默认处理，
+`{"enabled":false}` = 原图，两者语义不同，**不能靠"留个空对象"糊过去**。
+
+```json
+"bodyTemplate": {
+  "$merge": [
+    { "$coalesce": [
+      { "$keyValue": { "key": "{{derived.faceLightKey}}", "value": { "enabled": true, "mode": "light" } } },
+      { "$keyValue": { "key": "{{derived.faceHeavyKey}}", "value": { "enabled": true, "mode": "heavy" } } },
+      { "$keyValue": { "key": "{{derived.faceOffKey}}",   "value": { "enabled": false } } }
+    ] },
+    { "model": "{{model}}", "prompt": "{{prompt}}" }
+  ]
+},
+"derive": {
+  "faceLightKey": { "op": "lookup", "value": { "ref": "params.face" }, "cases": { "light": "face" }, "fallback": "" },
+  "faceHeavyKey": { "op": "lookup", "value": { "ref": "params.face" }, "cases": { "heavy": "face" }, "fallback": "" },
+  "faceOffKey":   { "op": "lookup", "value": { "ref": "params.face" }, "cases": { "off": "face" },   "fallback": "" }
+}
+```
+
+**三条读码得来、不必试错的源码事实**（`protocol-engine/compiler.ts`）：
+
+| 事实 | 依据 | 含义 |
+| --- | --- | --- |
+| `$keyValue.value` **可以是嵌套对象** | 172-179 行先 `renderTemplate(definition)`，普通对象走通用分支 212-217 行逐键渲染，布尔/数字原样透传（142 行 `typeof !== 'object'` 直接 return） | 静态对象当 value 合法，不必把 `enabled` 拼成字符串 |
+| `$coalesce` 落空返回 `UNDEFINED`，**父数组会把它滤掉** | 150-157 行 return UNDEFINED；142 行数组 `.filter(item => item !== UNDEFINED)` | `$merge` 收到的一定是「全是对象」的数组，**不会**报 `$merge 的每一项都必须渲染为对象` |
+| key 为空 → `UNDEFINED` | 176-177 行 `if (!key) return UNDEFINED` | 参数缺省或落到不认识的值时，整个字段从 body 里消失 |
+
+**副产品：不必穷举合法值。** UI 若发出 `"LIGHT"`（大小写）之类脏值，协议自动退回「不发该字段」——
+安全侧兜底，绝不把上游不认的值发出去。再叠 `omitEmpty: true` 是第二道保险。
+
+**必做的对照测试**（否则分不清"生效"和"被静默丢掉"）：
+
+```bash
+# 4~5 组 fixture：default / 缺省 / off / light / heavy（另加一个脏值）
+node --experimental-transform-types bin/inspect-request-body.mjs <provider.json> <model.json> <fixture.json>
+# 逐组看 body 里 face 是否存在、形态是否为 {"enabled":true,"mode":"light"}
+node --experimental-transform-types bin/probe-panel.mjs <model.json> <provider.json>
+# 改前「更多参数=[]」、改后「更多参数=[face]」才算这条路真的通了
+```
+
+佳速本次实测结果（2026-09-16，3 个 submit 全部生效）：`default`/缺省/`"LIGHT"`/`"weird"` → 不下发；
+`off` → `{"enabled":false}`；`light` → `{"enabled":true,"mode":"light"}`；`heavy` → 同理。
 
 #### 5.2.1 ⚠️ 「结果没遵循参考图」不等于 type 写错 —— 先分清两种归因
 
@@ -988,6 +1042,14 @@ difflib.SequenceMatcher(None, editor, sent).get_opcodes()          # 只该有 2
 | `aicost` / `seedance2.0` | `480p` `720p` `1080p` | `16:9` `9:16` `1:1` | 1–30 |
 | `佳速 jiasu` | `720p` `1080p` | `16:9` `9:16` `1:1` | 文档未给范围 |
 | `sudashuiapi` | **不发该字段**（由模型名决定） | `1:1` `3:4` `4:3` `9:16` `16:9` `21:9` `adaptive` | 4–15 |
+
+> ⚠️ **佳速 `/v1/video/generations` 另有一个可选的 `face` 对象字段**（2026-09-16 接入）：
+> `{"enabled":true,"mode":"light"}` = 脸部轻磨皮+略提亮；`{"enabled":true,"mode":"heavy"}` = 整张彩铅/浅色素描；
+> `{"enabled":false}` = 原图（不处理人脸）；**省略整个字段 = 服务端默认处理**（四态语义各不相同，不可互相代替）。
+> **它不在 `佳速api开发文档.md` 里** —— 权威来源是佳速首页公告挂的官方 new-api 插件源
+> `github.com/hyc0122/jiasuapi-newapi-plugins`（README 的参数映射表 + `plugins/tasks/jiasuapi/<版本>/plugin.js`
+> 里的 `normalizeFace()` 实现）。协议里的落法见 §5.2.5。
+> ⚠️ 只在**视频侧**（插件 `buildVideoBody`）；图片走 `POST /v1/images/create`（`buildImageBody`），**没有** `face`。
 
 现状：MegabyAI / aicost（h3 + seedance2.5 + seedance2.0）/ 佳速 / sudashuiapi **均已加兜底并通过断言**。
 修改前先读各站接入文档确认合法集合，改完必须跑第七节的**三步**校验。
